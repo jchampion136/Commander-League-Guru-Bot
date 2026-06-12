@@ -1,0 +1,40 @@
+# Environment variables / secrets
+.env
+
+# Python virtual environments
+
+venv/
+.venv/
+env/
+
+# Python cache files
+
+**pycache**/
+*.py[cod]
+
+# macOS files
+
+.DS_Store
+
+# VS Code
+
+.vscode/
+
+# JetBrains IDEs (PyCharm, IntelliJ)
+
+.idea/
+
+# Distribution / packaging
+
+build/
+dist/
+*.egg-info/
+
+# Logs
+
+*.log
+
+# SQLite databases (optional)
+
+*.db
+*.sqlite3
