@@ -1,6 +1,7 @@
 import os
 import discord
 from discord import app_commands
+from database import init_db
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -169,6 +170,7 @@ async def addpoints(interaction: discord.Interaction, player: str, points: int):
         f"Added {points} points to {player}."
     )
 
+init_db()
 bot.run(TOKEN)
     
     
