@@ -55,6 +55,7 @@ def init_db():
             PRIMARY KEY (league_id, player_id),
             FOREIGN KEY (league_id) REFERENCES leagues(league_id),
             FOREIGN KEY (player_id) REFERENCES players(player_id)
+            
         )
     """)
 
@@ -90,5 +91,80 @@ def get_active_league(guild_id):
 
     league = cursor.fetchone()
 
+    conn.close()
+    return league
+
+def get_point_standings(league_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+    """SELECT
+            p.discord_name,
+            lp.commander,
+            lp.points,
+            lp.firsts,
+            lp.seconds,
+            lp.thirds,
+            lp.fourths,
+            lp.no_shows
+        FROM league_players lp
+        JOIN players p ON lp.player_id = p.player_id
+        WHERE lp.league_id = ?
+        ORDER BY
+            lp.points DESC,
+            lp.firsts DESC,
+            lp.seconds DESC,
+            lp.thirds DESC,
+            lp.fourths DESC
+    """, (league_id,))
+    
+    standings = cursor.fetchall()
+    conn.close()
+    
+    return standings 
+
+def get_final_podium(league_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT p.discord_name, lp.final_place
+        FROM league_players lp
+        JOIN players p ON lp.player_id = p.player_id
+        WHERE lp.league_id = ?
+        AND lp.final_place IS NOT NULL
+        ORDER BY lp.final_place ASC
+    """, (league_id,))
+    
+    podium = cursor.fetchall()
+    conn.close()
+    return podium
+
+def get_leagues_for_guild(guild_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT league_id, name
+        FROM leagues
+        WHERE guild_id = ?
+        ORDER BY league_id DESC
+    """, (guild_id,))
+
+    leagues = cursor.fetchall()
+    conn.close()
+    return leagues
+
+def get_league_by_id(league_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT league_id, name, format, scoring, bracket
+        FROM leagues
+        WHERE league_id = ?
+    """, (league_id,))
+
+    league = cursor.fetchone()
     conn.close()
     return league

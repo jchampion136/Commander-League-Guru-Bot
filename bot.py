@@ -1,7 +1,7 @@
 import os
 import discord
 from discord import app_commands
-from database import init_db, create_league, get_active_league
+from database import init_db, create_league, get_active_league, get_point_standings, get_leagues_for_guild, get_league_by_id, get_final_podium
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -52,19 +52,6 @@ def create_player_record(username):
 
     return player
 
-def get_points_standings():
-    return sorted(
-        players.items(),
-        key=lambda item: (
-            item[1]["points"],
-            item[1]["firsts"],
-            item[1]["seconds"],
-            item[1]["thirds"],
-            item[1]["fourths"]
-        ),
-        reverse=True
-    )
-
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
@@ -88,7 +75,7 @@ async def help_command(interaction: discord.Interaction):
 @bot.tree.command(name="setup_league", description="Admin only: set up the current league")
 @app_commands.choices(
     format=[
-        app_commands.Choice(name="Standard", value="standard"),
+        app_commands.Choice(name="Traditional", value="traditional"),
         app_commands.Choice(name="Two-Headed Giant", value="two_headed_giant"),
         app_commands.Choice(name="Pauper", value="pauper")
     ],
@@ -114,13 +101,15 @@ async def setup_league(interaction: discord.Interaction, name: str, format: app_
     
     league = get_active_league(guild_id)
     
+    league_id, league_name, league_format, league_scoring, league_bracket = league
+
     await interaction.response.send_message(
         f"League Setup Confirmation:\n"
-        f"League ID: {league[0]}\n"
-        f"Name: {league[1]}\n"
-        f"Format: {league[2]}\n"
-        f"Scoring: {league[3]}\n"
-        f"Bracket: {league[4]}"
+        f"League ID: {league_id}\n"
+        f"Name: {league_name}\n"
+        f"Format: {league_format}\n"
+        f"Scoring: {league_scoring}\n"
+        f"Bracket: {league_bracket}"
     )
     
 
@@ -139,37 +128,94 @@ async def signup(interaction: discord.Interaction): #Leave out commander for now
         f"({current_league['format']})!"
     )
 
+#Added autocomplete function to add league choice
+async def league_autocomplete(interaction: discord.Interaction, current: str):
+    guild_id = str(interaction.guild.id)
+    leagues = get_leagues_for_guild(guild_id)
+    
+    return [
+        app_commands.Choice(
+            name=f"{league_id} - {name}",
+            value=str(league_id)
+        )
+        for league_id, name in leagues
+        if current.lower() in name.lower() ][:25]
+    
+            
 @bot.tree.command(name="standings", description="Show league standings")
-async def standing(interaction: discord.Interaction):
-    if current_league["scoring"] == "bracket":
+@app_commands.autocomplete(league=league_autocomplete)
+async def standing(interaction: discord.Interaction, league: str):
+    guild_id = str(interaction.guild.id)
+    
+    if league:
+        selected_league = get_league_by_id(int(league))
+        
+    else:
+        selected_league = get_active_league(guild_id)
+        
+    if selected_league is None:
+        await interaction.response.send_message("No active league found. Ask your administrator for assistance.",ephemeral=True)
+        return
+    
+    league_id, league_name, league_format, scoring, bracket = selected_league
+    
+    if scoring == "bracket":
         #TODO Will complete later
         await interaction.response.send_message("Bracket standings are not implemented yet. Check back later")
         return
     
-    if current_league["scoring"] == "points":
-        if not players:
-            await interaction.response.send_message("No players have signed up yet.")
+    if scoring == "points":
+        
+        standings = get_point_standings(league_id)
+        
+        if not standings:
+            await interaction.response.send_message(f"No standings found for **{league_name}**. Check back later.")
             return
         
-        sorted_players = get_points_standings()
         
-        message = f"**{current_league['name']} Standings**\n"
-        message += f"*Format: {current_league['format']}*\n\n"
+        message = f"🏆 **{league_name} Standings** 🏆\n"
+        message += f"*Format: {league_format} | Bracket {bracket} | Scoring: {scoring}*\n\n"
 
-        for index, (name, data) in enumerate(sorted_players, start=1):
-            message += (
-                f"{index}. {name} — "
-                f"{data['points']} pts "
-                f"({data['firsts']} 1st, "
-                f"{data['seconds']} 2nd, "
-                f"{data['thirds']} 3rd, "
-                f"{data['fourths']} 4th)\n"
-            )
-        
-        await interaction.response.send_message(message)
-        return
-    
-    await interaction.response.send_message("Unknown scoring type: Please consult an admin to run '/setup_league' .")
+        podium = get_final_podium(league_id)
+
+        if podium:
+            message += "**Final Podium:**\n"
+
+        medals = {
+            1: "🥇",
+            2: "🥈",
+            3: "🥉"
+        }
+
+        grouped = {}
+
+        for name, final_place in podium:
+            grouped.setdefault(final_place, []).append(name)
+
+        for place in sorted(grouped):
+            names = " / ".join(grouped[place])
+            message += f"{medals[place]} **{names}**\n"
+
+        message += "\n"
+            
+
+        #for index, player in enumerate(top_three):
+            #name, commander, points, firsts, seconds, thirds, fourths, no_shows = player
+           #message += f"{medals[index]} **{name}** — {points} pts\n"
+
+        #Print full leaderboard
+        message += "\n**Full Leaderboard:**\n"
+
+        for index, player in enumerate(standings, start=1):
+            name, commander, points, firsts, seconds, thirds, fourths, no_shows = player
+
+            commander_text = f" — {commander}" if commander else ""
+
+            message += ( #Prtints name, total points, commander, and number of 1st, second, thirds, fourths, and no shows
+                f"{index}. **{name}** — {points} pts — {commander} "
+                f"(🥇 {firsts}  🥈 {seconds}    🥉 {thirds}     4️⃣ {fourths}     ❌ {no_shows})\n")
+
+    await interaction.response.send_message(message)
 
 @bot.tree.command(name="addpoints", description="Add points to a player")
 async def addpoints(interaction: discord.Interaction, player: str, points: int):
