@@ -5,6 +5,7 @@ DB_PATH = "database/league.db"
 def get_connection():
     return sqlite3.connect(DB_PATH)
 
+    
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -16,6 +17,7 @@ def init_db():
             name TEXT NOT NULL,
             format TEXT NOT NULL,
             scoring TEXT NOT NULL,
+            bracket INTEGER NOT NULL,
             active INTEGER DEFAULT 0
         )
     """)
@@ -58,3 +60,35 @@ def init_db():
 
     conn.commit()
     conn.close()
+    
+def create_league(guild_id, name, format, scoring, bracket):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        "UPDATE leagues SET active = 0 WHERE guild_id = ?",
+        (guild_id,)
+    )
+
+    cursor.execute("""
+        INSERT INTO leagues (guild_id, name, format, scoring, bracket, active)
+        VALUES (?, ?, ?, ?, ?, 1)
+    """, (guild_id, name, format, scoring, bracket))
+
+    conn.commit()
+    conn.close()
+
+def get_active_league(guild_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT league_id, name, format, scoring, bracket
+        FROM leagues
+        WHERE guild_id = ? AND active = 1
+    """, (guild_id,))
+
+    league = cursor.fetchone()
+
+    conn.close()
+    return league

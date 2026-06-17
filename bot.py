@@ -1,7 +1,7 @@
 import os
 import discord
 from discord import app_commands
-from database import init_db
+from database import init_db, create_league, get_active_league
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -86,20 +86,41 @@ async def help_command(interaction: discord.Interaction):
 
 #Allow admins to set up league for the month
 @bot.tree.command(name="setup_league", description="Admin only: set up the current league")
-async def setup_league(interaction: discord.Interaction, name: str, format: str, scoring: str):
+@app_commands.choices(
+    format=[
+        app_commands.Choice(name="Standard", value="standard"),
+        app_commands.Choice(name="Two-Headed Giant", value="two_headed_giant"),
+        app_commands.Choice(name="Pauper", value="pauper")
+    ],
+    scoring=[
+        app_commands.Choice(name="Points League", value="points"),
+        app_commands.Choice(name="Bracket League", value="bracket")
+    ],
+    bracket=[
+        app_commands.Choice(name="Bracket 1", value=1),
+        app_commands.Choice(name="Bracket 2", value=2),
+        app_commands.Choice(name="Bracket 3", value=3),
+        app_commands.Choice(name="Bracket 4", value=4),
+        app_commands.Choice(name="Bracket 5", value=5)
+    ]
+)
+async def setup_league(interaction: discord.Interaction, name: str, format: app_commands.Choice[str], scoring: app_commands.Choice[str],bracket: app_commands.Choice[int]):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("you do not have permission to use this command",ephemeral= True)
         return 
     
-    current_league["name"] = name
-    current_league["format"] = format
-    current_league["scoring"] = scoring.lower()
+    guild_id = str(interaction.guild.id) #Creates a unique identifier for server
+    create_league(guild_id, name, format.value, scoring.value, bracket.value)
+    
+    league = get_active_league(guild_id)
     
     await interaction.response.send_message(
         f"League Setup Confirmation:\n"
-        f"Name: {name}\n"
-        f"Format: {format}\n"
-        f"Scoring: {current_league['scoring']}"
+        f"League ID: {league[0]}\n"
+        f"Name: {league[1]}\n"
+        f"Format: {league[2]}\n"
+        f"Scoring: {league[3]}\n"
+        f"Bracket: {league[4]}"
     )
     
 
