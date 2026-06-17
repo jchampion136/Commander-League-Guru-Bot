@@ -140,6 +140,37 @@ def get_final_podium(league_id):
     conn.close()
     return podium
 
+def get_bracket_img(league_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT bracket_img
+        FROM leagues
+        WHERE league_id = ?
+    """, (league_id,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if result is None:
+        return None
+    else:
+        return result[0]
+
+def update_bracket_img(league_id, bracket_img):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        UPDATE leagues
+        SET bracket_img = ?
+        WHERE league_id = ?
+    """, (bracket_img, league_id))
+    
+    conn.commit()
+    conn.close()
+    
 def get_leagues_for_guild(guild_id):
     conn = get_connection()
     cursor = conn.cursor()

@@ -1,7 +1,7 @@
 import os
 import discord
 from discord import app_commands
-from database import init_db, create_league, get_active_league, get_point_standings, get_leagues_for_guild, get_league_by_id, get_final_podium
+from database import init_db, create_league, get_active_league, get_point_standings, get_leagues_for_guild, get_league_by_id, get_final_podium, update_bracket_img, get_bracket_img
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -52,6 +52,19 @@ def create_player_record(username):
 
     return player
 
+#Helper function to show League options contained in the database for autocomplete
+async def league_autocomplete(interaction: discord.Interaction, current: str):
+    guild_id = str(interaction.guild.id)
+    leagues = get_leagues_for_guild(guild_id)
+    
+    return [
+        app_commands.Choice(
+            name=f"{league_id} - {name}",
+            value=str(league_id)
+        )
+        for league_id, name in leagues
+        if current.lower() in name.lower() ][:25]
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
@@ -63,8 +76,9 @@ async def help_command(interaction: discord.Interaction):
         "**Commander League Guru Commands**\n\n"
         "/help - Show this menu\n"
         "/signup - Sign up for the current league\n"
+        "/update_bracket - Admin only: update bracket URL for a league\n"
         "/standings - View current standings\n"
-        "/setup_league - Admin only\n"
+        "/setup_league - Admin only: Sets up the current league\n"
         "/addpoints - Admin only (points leagues only)\n"
     )
 
@@ -128,23 +142,38 @@ async def signup(interaction: discord.Interaction): #Leave out commander for now
         f"({current_league['format']})!"
     )
 
-#Added autocomplete function to add league choice
-async def league_autocomplete(interaction: discord.Interaction, current: str):
-    guild_id = str(interaction.guild.id)
-    leagues = get_leagues_for_guild(guild_id)
+@bot.tree.command(name="update_bracket", description="Admin only: update bracket image for a league")
+@app_commands.autocomplete(league=league_autocomplete)
+async def update_bracket(interaction: discord.Interaction, league: str, image: discord.Attachment):
     
-    return [
-        app_commands.Choice(
-            name=f"{league_id} - {name}",
-            value=str(league_id)
-        )
-        for league_id, name in leagues
-        if current.lower() in name.lower() ][:25]
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("You do not have permission to use this command.",ephemeral=True)
+        return
+    
+    selected_league = get_league_by_id(int(league))
+    
+    if selected_league is None:
+        await interaction.response.send_message("League not found. Please check the league ID and try again.",ephemeral=True)
+        return
+    
+    league_id, league_name, league_format, scoring, bracket = selected_league
+    
+    if scoring != "bracket":
+        await interaction.response.send_message(f"Url cannot be updated since **{league_name}** is not a bracket-based league.",ephemeral=True)
+        return
+    
+    if not image.content_type.startswith("image/"):
+        await interaction.response.send_message("Please upload a valid image file.",ephemeral=True)
+        return
+    
+    update_bracket_img(league_id, image.url)
+    
+    await interaction.response.send_message(f"Bracket image for **{league_name}** has been updated.")
     
             
 @bot.tree.command(name="standings", description="Show league standings")
 @app_commands.autocomplete(league=league_autocomplete)
-async def standing(interaction: discord.Interaction, league: str):
+async def standings(interaction: discord.Interaction, league: str):
     guild_id = str(interaction.guild.id)
     
     if league:
@@ -160,8 +189,16 @@ async def standing(interaction: discord.Interaction, league: str):
     league_id, league_name, league_format, scoring, bracket = selected_league
     
     if scoring == "bracket":
-        #TODO Will complete later
-        await interaction.response.send_message("Bracket standings are not implemented yet. Check back later")
+        bracket_img = get_bracket_img(league_id)
+        
+        if bracket_img is None:
+            await interaction.response.send_message(f"No bracket found for **{league_name}**. Check back later.")
+            return
+        
+        embed = discord.Embed(title=f"🏆 {league_name} Bracket 🏆")
+        embed.set_image(url=bracket_img)
+        
+        await interaction.response.send_message(embed=embed)
         return
     
     if scoring == "points":
@@ -198,18 +235,11 @@ async def standing(interaction: discord.Interaction, league: str):
 
         message += "\n"
             
-
-        #for index, player in enumerate(top_three):
-            #name, commander, points, firsts, seconds, thirds, fourths, no_shows = player
-           #message += f"{medals[index]} **{name}** — {points} pts\n"
-
         #Print full leaderboard
         message += "\n**Full Leaderboard:**\n"
 
         for index, player in enumerate(standings, start=1):
             name, commander, points, firsts, seconds, thirds, fourths, no_shows = player
-
-            commander_text = f" — {commander}" if commander else ""
 
             message += ( #Prtints name, total points, commander, and number of 1st, second, thirds, fourths, and no shows
                 f"{index}. **{name}** — {points} pts — {commander} "
