@@ -3,6 +3,7 @@ import discord
 from discord import app_commands
 from database import init_db, create_league, get_active_league, get_point_standings, get_leagues_for_guild, get_league_by_id, get_final_podium, update_bracket_img, get_bracket_img
 from dotenv import load_dotenv
+from database import signup_player
 
 load_dotenv()
 
@@ -127,20 +128,49 @@ async def setup_league(interaction: discord.Interaction, name: str, format: app_
     )
     
 
-@bot.tree.command(name="signup", description=f"Sign up for {current_league['name']}")
-async def signup(interaction: discord.Interaction): #Leave out commander for now. May alter later
-    username = interaction.user.name
+@bot.tree.command(name="signup", description=f"Sign up for our current league")
+async def signup(interaction: discord.Interaction, commander: str = None, teammate: str = None, team_name: str = None):
     
-    if username in players:
-        await interaction.response.send_message(f"{username}, you are already signed up!")
-        return 
-    
-    players[username] = create_player_record(username)
-    
-    await interaction.response.send_message(
-        f"Thank you {username}. You are signed up for **{current_league['name']}** "
-        f"({current_league['format']})!"
+    guild_id = str(interaction.guild.id)
+    league = get_active_league(guild_id)
+
+    if league is None:
+        await interaction.response.send_message(
+            "No active league found. Ask an admin to set one up first.",
+            ephemeral=True
+        )
+        return
+
+    league_id, league_name, league_format, scoring, bracket = league
+
+    discord_id = str(interaction.user.id)
+    discord_name = interaction.user.display_name
+
+    success = signup_player(
+        league_id,
+        discord_id,
+        discord_name,
+        commander,
+        teammate,
+        team_name
     )
+
+    if not success:
+        await interaction.response.send_message(
+            f"You are already signed up for **{league_name}**.",
+            ephemeral=True
+        )
+        return
+
+    message = f"✅ **{discord_name}** signed up for **{league_name}**!"
+
+    if commander:
+        message += f"\nCommander: {commander}"
+
+    if teammate:
+        message += f"\nRequested Teammate: {teammate}"
+
+    await interaction.response.send_message(message)
 
 @bot.tree.command(name="update_bracket", description="Admin only: update bracket image for a league")
 @app_commands.autocomplete(league=league_autocomplete)

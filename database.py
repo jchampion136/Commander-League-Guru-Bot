@@ -62,6 +62,36 @@ def init_db():
     conn.commit()
     conn.close()
     
+def signup_player(league_id, discord_id, discord_name, commander=None, teammate=None, team_name=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT OR IGNORE INTO players (discord_id, discord_name)
+        VALUES (?, ?)
+    """, (discord_id, discord_name))
+
+    cursor.execute("SELECT player_id FROM players WHERE discord_id = ?", (discord_id,))
+    player_id = cursor.fetchone()[0]
+    
+    cursor.execute(""" SELECT COUNT(*) FROM league_players WHERE league_id = ? AND player_id = ?""", (league_id, player_id))
+    
+    already_signed_up = cursor.fetchone()
+    
+    if already_signed_up[0] > 0:
+        conn.close()
+        return False  # Player is already signed up for this league
+
+
+    cursor.execute("""
+        INSERT INTO league_players (league_id, player_id, commander, partner_name, team_name)
+        VALUES (?, ?, ?, ?, ?)
+    """, (league_id, player_id, commander, teammate, team_name))
+
+    conn.commit()
+    conn.close()
+    return True  # Player successfully signed up
+
 def create_league(guild_id, name, format, scoring, bracket):
     conn = get_connection()
     cursor = conn.cursor()
